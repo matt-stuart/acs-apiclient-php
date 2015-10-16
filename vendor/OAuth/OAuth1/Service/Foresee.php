@@ -89,7 +89,7 @@ class Foresee extends AbstractService
         );
 
         $headers = array_merge($authorizationHeader, $this->getExtraOAuthHeaders());
-print_r($headers);
+
         $responseBody = $this->httpClient->retrieveResponse($this->getAccessTokenEndpoint(), null, $headers, "GET");
 
         $token = $this->parseAccessTokenResponse($responseBody);

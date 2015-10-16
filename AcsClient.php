@@ -28,6 +28,14 @@ class AcsClient
         return $this;
     }
 
+    /**
+     * Magic function implements proxy "get*" functions
+     *
+     * @param string $name
+     * @param array $arguments
+     * @return mixed
+     * @throws InvalidArgumentException
+     */
     public function __call($name, $arguments)
     {
         if (substr($name, 0, 3) === "get") {
@@ -79,12 +87,67 @@ class AcsClient
         }
 
         if (!$this->_establishAuthorization()) {
-            $callback();
-            return;
+            $callback($this);
+            return false;
         }
 
-        echo "SUCCESS";
+        $uri = new \OAuth\Common\Http\Uri\Uri($this->getOption('serviceRoot') . $resource);
+
+        $oa = $this->_getOAuth();
+        $response = $oa->request(
+            $resource,
+            $method,
+            null,
+            array()
+        );
+        if (is_string($response)) {
+            $response = json_decode($response, true);
+        }
+        $this->setError(false);
+        $this->setLastResponse($response);
+
+        $callback($this);
         return $this;
+    }
+
+    public function getDateObject($clientId, $date)
+    {
+        $arguments = func_get_args();
+
+        // Remove the client id
+        array_shift($arguments);
+        if (!count($arguments) || !$from = array_shift($arguments)) {
+            throw new \InvalidArgumentException("Invalid arguments, date creation requires at least one date parameter");
+        }
+
+        $to = $style = $fiscal = $option = null;
+        if ($arguments) {
+            if (is_object($fiscal = end($arguments))) {
+                $fiscal = null;
+            }
+            if (count($arguments) > 4) {
+                $arguments = array_slice($arguments, 0, 4);
+            }
+            switch (count($arguments)) {
+                case 4:
+                    list($to, $style, $option, $fiscal) = $arguments;
+                    break;
+                case 3:
+                    list($to, $style, $option) = $arguments;
+                    break;
+
+                case 2:
+                    list($to, $style) = $arguments;
+                    $option = $style;
+                    break;
+                case 1:
+                    $to = $arguments[0];
+                    $option = $style = $to;
+                    break;
+            }
+        }
+        require_once __DIR__ . '/vendor/ForeseeDate.php';
+        return \ForeseeDate::create($clientId, $from, $to, $style, $fiscal, $option);
     }
 
     public function setUsername($username)
@@ -111,6 +174,32 @@ class AcsClient
         return $this;
     }
 
+    public function setLastResponse($response)
+    {
+        $this->_lastResponse = $response;
+    }
+
+    public function getLastResponse()
+    {
+        return $this->_lastResponse;
+    }
+
+
+    public function setError($error)
+    {
+        $this->_error = $error;
+    }
+
+    public function isError()
+    {
+        return !!$this->_error;
+    }
+
+    public function getError()
+    {
+        return $this->_error;
+    }
+
     public function getSignatureMethod()
     {
         return $this->_signatureMethod ?: static::SIGNATURE_METHOD_HMACSHA1;
@@ -125,6 +214,7 @@ class AcsClient
         return null;
     }
 
+
     protected $_consumerKey;
     protected $_consumerSecret;
     protected $_signatureMethod;
@@ -132,6 +222,9 @@ class AcsClient
     protected $_username;
     protected $_password;
 
+
+    protected $_lastResponse = null;
+    protected $_error = false;
 
     /**
      * Options array
@@ -165,8 +258,15 @@ class AcsClient
                 'oob'
             );
 
+            $cookieJar = tempnam(sys_get_temp_dir(), "acs_");
+            $this->setOptions(array('cookieJar' => $cookieJar));
+
             $client = new \OAuth\Common\Http\Client\CurlClient('ACSOAuthLibrary');
             $client->setMaxRedirects(0);
+            $client->setCurlParameters(array(
+                CURLOPT_COOKIEFILE => $cookieJar,
+                CURLOPT_COOKIEJAR => $cookieJar
+            ));
 
             $storage = new \OAuth\Common\Storage\Memory();
 
@@ -187,21 +287,43 @@ class AcsClient
         return $this->_oa;
     }
 
+    protected function _finishOAuth()
+    {
+        if ($this->_oa) {
+            if ($cj = $this->getOption('cookieJar')) {
+                @unlink($cj);
+            }
+        }
+    }
+
     protected function _establishAuthorization()
     {
+        if (isset($this->_oaData['accessToken'])) {
+            return true;
+        }
+
         $oa = $this->_getOAuth();
 
         try {
+            /**
+             * *** REQUEST TOKEN
+             */
             $this->_oaData['requestToken'] = $requestToken = $oa->requestRequestToken();
 
             if (!$requestToken) {
                 // Add error return false
+                $this->setError("Unable to retrieve authorization token from service.");
+                return false;
             }
 
             /**
              * @var \OAuth\Common\Http\Client\CurlClient $request
              */
             $request = $oa->getHttpClient();
+
+            /**
+             * LOGIN
+             */
             $response = $request->retrieveResponse(
                 $oa->getLoginEndpoint(),
                 array(
@@ -213,36 +335,20 @@ class AcsClient
             );
 
             $info = $request->getLastRequest('info');
-
             if ($info['http_code'] != 302) {
-                // ERROR
-                $b = 5;
+                $this->setError("Unexpected response from the OAuth service, unable to authorize.");
+                return false;
             }
+
             $redirectUrl = $info['redirect_url'];
             if (strpos($redirectUrl, '#loginfailed') !== FALSE) {
-                // ERROR
-                $c = 5;
+                $this->setError("Unable to login, username and password are invalid.");
+                return false;
             }
 
-            $headers = $request->getLastRequest('headers');
-            $cookies = array();
-            foreach ((array)$headers['set-cookie'] as $cookie) {
-                $cookie = explode(';', trim($cookie));
-                $cookie = explode('=', $cookie[0]);
-                $cookies[trim($cookie[0])] = trim($cookie[1]);
-            }
-            print_r($cookies);
-            $this->_setCookie($cookies);
-            $cookies = $this->_getCookie();
-            $cookies['CONSUMER_TYPE'] = $this->getConsumerType();
-
-            $cookies = array_map(function($v, $k) {
-                return "{$k}={$v}";
-            }, $cookies, array_keys($cookies));
-            $cookies = implode("; ", $cookies);
-
-            $request->setCurlParameters(array(CURLOPT_COOKIE => $cookies));
-
+            /**
+             * CHECK AUTHORIZATION / GET VERIFIER
+             */
             $response = $request->retrieveResponse(
                 $this->_oa->getAuthorizationEndpoint(array(
                     'oauth_token' => $requestToken->getRequestToken()
@@ -254,56 +360,43 @@ class AcsClient
             $last = $request->getLastRequest();
             $info = $last['info'];
             if ($info['http_code'] != '302') {
-                // ERROR
-                $a = 5;
-                die('No redirect');
+                $this->setError("Unexpected response from the OAuth service, unable to authorize.");
+                return false;
             }
 
             $url = $info['redirect_url'];
             if (strpos($url, '?') === FALSE) {
-                // ERROR
-                $a = 6;
-                die('no url');
+                $this->setError("Unexpected response from the OAuth service, unable to authorize.");
+                return false;
             }
 
             list($host, $url) = explode('?', $url, 2);
             parse_str($url, $values);
             if (!isset($values['oauth_verifier']) || strlen($values['oauth_verifier']) < 2) {
-                // ERROR
-                $a = 7;
-                die('no verifier');
+                $this->setError("Unexpected response from OAuth service, unable to complete authorization.");
+                return false;
             }
-            $headers = $request->getLastRequest('headers');
-            $cookies = array();
-            foreach ((array)$headers['set-cookie'] as $cookie) {
-                $cookie = explode(';', trim($cookie));
-                $cookie = explode('=', $cookie[0]);
-                $cookies[trim($cookie[0])] = trim($cookie[1]);
-            }
-            print_r($cookies);
-            $this->_setCookie($cookies);
-            $cookies = $this->_getCookie();
-            $cookies = array_map(function($v, $k) {
-                return "{$k}={$v}";
-            }, $cookies, array_keys($cookies));
-            $cookies = implode("; ", $cookies);
 
-            $request->setCurlParameters(array(CURLOPT_COOKIE => $cookies));
-            
             $this->_oaData['oauth_verifier'] = $values['oauth_verifier'];
 
+            /**
+             * ACCESS TOKEN
+             */
             $oa->setHttpClient($request);
             $accessToken = $oa->requestAccessToken(
                 $requestToken->getRequestToken(),
                 $this->_oaData['oauth_verifier'],
                 $requestToken->getRequestTokenSecret()
             );
-            $a = 5;
+
+            $this->_oaData['accessToken'] = $accessToken;
+
+            return true;
         } catch (Exception $e) {
             // Add error
-            echo "ERROR: " . $e->getMessage() . PHP_EOL;
+            $this->setError("Error while authorizing. " . $e->getMessage());
+            return false;
         }
-        return true;
     }
 
     protected function _generateResourceUri($resource, $params = array())
@@ -336,32 +429,5 @@ class AcsClient
             }
         }
         return $cookies;
-    }
-
-    protected function _setCookie($cookie, $value = null)
-    {
-        if (!$value && is_array($cookie)) {
-            foreach ($cookie as $c => $v) {
-                $this->_setCookie($c, $v);
-            }
-            return $this;
-        }
-
-        if (!isset($this->_oaData['cookies'])) {
-            $this->_oaData['cookies'] = array();
-        }
-        $this->_oaData['cookies'][$cookie] = $value;
-        return $this;
-    }
-
-    public function _getCookie($cookie = null)
-    {
-        if (!$cookie) {
-            return $this->_oaData['cookies'] ?: array();
-        }
-        if (isset($this->_oaData['cookies']) && isset($this->_oaData['cookies'][$cookie])) {
-            return $this->_oaData['cookies'][$cookie];
-        }
-        return null;
     }
 }
