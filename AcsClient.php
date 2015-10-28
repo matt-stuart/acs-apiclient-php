@@ -214,9 +214,53 @@ class AcsClient
         return null;
     }
 
+    public function setAccessToken($token)
+    {
+        if (is_string($token)) {
+            $token = array('accessToken' => $token);
+            if (is_array($this->_accessToken)) {
+                $token = array_merge($this->_accessToken,array('accessToken' => $token));
+            }
+        }
+        if (!is_array($token)) {
+            throw new \InvalidArgumentException("Invalid access token provided. Expect string or array");
+        }
+
+        $this->_accessToken = $token;
+        return $this;
+    }
+
+    public function setAccessTokenSecret($token)
+    {
+        if (!is_string($token)) {
+            throw new \InvalidArgumentException("Invalid access token secret provided. Expected string");
+        }
+
+        if (!is_array($this->_accessToken)) {
+            $this->_accessToken = array();
+        }
+        $this->_accessToken['accessTokenSecret'] = $token;
+        return $this;
+    }
+
+    public function getAccessToken()
+    {
+        return $this->_accessToken;
+    }
+
+    public function authenticate()
+    {
+        $this->_oa = null;
+        $this->_oaData = array();
+        $this->_accessToken = null;
+
+        return $this->_establishAuthorization();
+    }
+
 
     protected $_consumerKey;
     protected $_consumerSecret;
+    protected $_accessToken;
     protected $_signatureMethod;
 
     protected $_username;
@@ -282,6 +326,15 @@ class AcsClient
                 $signature,
                 $baseUri
             );
+
+            if ($this->_accessToken) {
+                $token = $this->_oa->createAccessToken(array(
+                    'oauth_token' => $this->_accessToken['accessToken'],
+                    'oauth_token_secret' => $this->_accessToken['accessTokenSecret']
+                ));
+                $this->_oa->setAccessToken($token);
+                $this->_oaData['accessToken'] = $token;
+            }
         }
 
         return $this->_oa;
@@ -298,11 +351,11 @@ class AcsClient
 
     protected function _establishAuthorization()
     {
+        $oa = $this->_getOAuth();
+
         if (isset($this->_oaData['accessToken'])) {
             return true;
         }
-
-        $oa = $this->_getOAuth();
 
         try {
             /**
@@ -389,8 +442,8 @@ class AcsClient
                 $requestToken->getRequestTokenSecret()
             );
 
+            $this->setAccessToken($accessToken->getAccessToken())->setAccessTokenSecret($accessToken->getAccessTokenSecret());
             $this->_oaData['accessToken'] = $accessToken;
-
             return true;
         } catch (Exception $e) {
             // Add error

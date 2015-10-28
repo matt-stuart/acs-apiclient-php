@@ -93,9 +93,36 @@ class Foresee extends AbstractService
         $responseBody = $this->httpClient->retrieveResponse($this->getAccessTokenEndpoint(), null, $headers, "GET");
 
         $token = $this->parseAccessTokenResponse($responseBody);
+        $this->setAccessToken($token);
+        return $token;
+    }
+
+    public function setAccessToken($token)
+    {
         $this->storage->storeAccessToken($this->service(), $token);
 
+        return $this;
+    }
+
+    public function createAccessToken($data)
+    {
+        $token = new StdOAuth1Token();
+
+        $token->setRequestToken($data['oauth_token']);
+        $token->setRequestTokenSecret($data['oauth_token_secret']);
+        $token->setAccessToken($data['oauth_token']);
+        $token->setAccessTokenSecret($data['oauth_token_secret']);
+
+        $token->setEndOfLife(StdOAuth1Token::EOL_NEVER_EXPIRES);
+        unset($data['oauth_token'], $data['oauth_token_secret']);
+        $token->setExtraParams($data);
+
         return $token;
+    }
+
+    public function getAccessToken()
+    {
+        return $this->storage->retrieveAccessToken($this->service());
     }
 
     /**
@@ -127,17 +154,6 @@ class Foresee extends AbstractService
             throw new TokenResponseException('Error in retrieving token: "' . $data['error'] . '"');
         }
 
-        $token = new StdOAuth1Token();
-
-        $token->setRequestToken($data['oauth_token']);
-        $token->setRequestTokenSecret($data['oauth_token_secret']);
-        $token->setAccessToken($data['oauth_token']);
-        $token->setAccessTokenSecret($data['oauth_token_secret']);
-
-        $token->setEndOfLife(StdOAuth1Token::EOL_NEVER_EXPIRES);
-        unset($data['oauth_token'], $data['oauth_token_secret']);
-        $token->setExtraParams($data);
-
-        return $token;
+        return $this->createAccessToken($data);
     }
 }
