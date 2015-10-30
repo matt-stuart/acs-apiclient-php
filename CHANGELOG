@@ -1,0 +1,21 @@
+# Change Log
+All notable changes to this project will be documented in this file.
+
+## [0.0.0+2] - 2015-10-30
+### Added
+- Additional error codes for error states
+-
+## [0.0.0+1] - 2015-10-26
+### Added
+- README.md file describing usage
+- Ability to force authentication process with `authenticate()` call
+- Ability to set access key and associated secrets to skip the authentication process
+- Ability to retrieve access keys and associated secrets for storage and reuse
+### Updated
+- Function PHPDOC
+
+## [0.0.0] - 2015-10-15
+### Added
+- Changelog file
+- Initial ACS Library Entry Point
+- OAuth Library to handle back ground interactions
