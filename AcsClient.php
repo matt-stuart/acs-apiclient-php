@@ -100,13 +100,39 @@ class AcsClient
             null,
             array()
         );
-        if (is_string($response)) {
-            $response = json_decode($response, true);
+
+        $info = $oa->getLastRequest();
+        if (!(isset($info['info']) && isset($info['info']['http_code']) && $info['info']['http_code'] == 200)) {
+            // Error State
+            $http_code = 0;
+            if (isset($info['info']) && isset($info['info']['http_code'])) {
+                $http_code = $info['info']['http_code'];
+            }
+
+            switch ($http_code) {
+                case 404:
+                    $this->setError("404", "Unknown resource '$resource'");
+                    break;
+                case 403:
+                    $this->setError("403", "Access denied to '$resource'");
+                    break;
+                default:
+                    $this->setError("INVALIDREQUEST", "Request to '$resource' could not complete. Please try again.");
+                    break;
+            }
+        } else if (!is_string($response) || !$response = json_decode($response, true)) {
+            $this->setError("INVALIDREQUEST", "Request to '$resource' could not complete. Please try again.");
         }
+
+        if ($this->isError()) {
+            $callback($this);
+            return false;
+        }
+
         $this->setError(false);
         $this->setLastResponse($response);
-
         $callback($this);
+
         return $this;
     }
 
@@ -146,7 +172,10 @@ class AcsClient
                     break;
             }
         }
-        require_once __DIR__ . '/vendor/ForeseeDate.php';
+
+        if (!class_exists('ForeseeDate', false)) {
+            require_once __DIR__ . '/vendor/ForeseeDate.php';
+        }
         return \ForeseeDate::create($clientId, $from, $to, $style, $fiscal, $option);
     }
 
@@ -185,9 +214,16 @@ class AcsClient
     }
 
 
-    public function setError($error)
+    public function setError($code, $message = "")
     {
-        $this->_error = $error;
+        if ($code) {
+            $code = array(
+                'code' => $code,
+                'message' => $message
+            );
+        }
+        $this->_error = $code;
+        return $this;
     }
 
     public function isError()
@@ -365,7 +401,7 @@ class AcsClient
 
             if (!$requestToken) {
                 // Add error return false
-                $this->setError("Unable to retrieve authorization token from service.");
+                $this->setError("INVALIDREQUESTTOKEN", "Unable to retrieve request token from service.");
                 return false;
             }
 
@@ -389,13 +425,13 @@ class AcsClient
 
             $info = $request->getLastRequest('info');
             if ($info['http_code'] != 302) {
-                $this->setError("Unexpected response from the OAuth service, unable to authorize.");
+                $this->setError("COULDNOTLOGIN", "Unexpected response from the OAuth service, unable to authorize.");
                 return false;
             }
 
             $redirectUrl = $info['redirect_url'];
             if (strpos($redirectUrl, '#loginfailed') !== FALSE) {
-                $this->setError("Unable to login, username and password are invalid.");
+                $this->setError("INVALIDCREDENTIALS", "Unable to login, username and password are invalid.");
                 return false;
             }
 
@@ -413,20 +449,20 @@ class AcsClient
             $last = $request->getLastRequest();
             $info = $last['info'];
             if ($info['http_code'] != '302') {
-                $this->setError("Unexpected response from the OAuth service, unable to authorize.");
+                $this->setError("COULDNOTGETACCESSTOKEN", "Unexpected response from the OAuth service, unable to authorize.");
                 return false;
             }
 
             $url = $info['redirect_url'];
             if (strpos($url, '?') === FALSE) {
-                $this->setError("Unexpected response from the OAuth service, unable to authorize.");
+                $this->setError("COULDNOTGETACCESSTOKEN", "Unexpected response from the OAuth service, unable to authorize.");
                 return false;
             }
 
             list($host, $url) = explode('?', $url, 2);
             parse_str($url, $values);
             if (!isset($values['oauth_verifier']) || strlen($values['oauth_verifier']) < 2) {
-                $this->setError("Unexpected response from OAuth service, unable to complete authorization.");
+                $this->setError("COULDNOTFINDVERIFIER", "Unexpected response from OAuth service, unable to complete authorization.");
                 return false;
             }
 
@@ -442,12 +478,17 @@ class AcsClient
                 $requestToken->getRequestTokenSecret()
             );
 
+            if (!$accessToken) {
+                $this->setError("COULDNOTGETACCESSTOKENNULL", "Unable to retrieve access token, please try again.");
+                return false;
+
+            }
             $this->setAccessToken($accessToken->getAccessToken())->setAccessTokenSecret($accessToken->getAccessTokenSecret());
             $this->_oaData['accessToken'] = $accessToken;
             return true;
         } catch (Exception $e) {
             // Add error
-            $this->setError("Error while authorizing. " . $e->getMessage());
+            $this->setError("COULDNOTLOGIN", "Error while authorizing. " . $e->getMessage());
             return false;
         }
     }

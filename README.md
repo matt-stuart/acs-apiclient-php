@@ -55,7 +55,9 @@ If there is a problem authenticating or reaching an endpoint, or if a request is
 * `COULDNOTFINDVERIFIER` - There was a problem with the authentication flow. Might be due to an invalid `consumer_type`, `consumer_key` or `consumer_secret`.
 * `COULDNOTGETACCESSTOKEN` - There was a problem with the authentication flow. Might be due to an invalid `consumer_type`, `consumer_key` or `consumer_secret`.
 * `COULDNOTGETACCESSTOKENNULL` - There was a problem with the authentication flow. Might be due to an invalid `consumer_type`, `consumer_key` or `consumer_secret`.
+* `INVALIDREQUEST` - The request failed for an unknown or generic reason. Please try again.
 * `403` - You do not have access to that endpoint with that criteria.
+* `404` - The endpoint requested could not be found.
 
 Errors are provided as a simple array with keys 'code' and 'msg'. Example:
 ```php

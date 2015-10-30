@@ -63,11 +63,15 @@ class Foresee extends AbstractService
         return new Uri($this->baseApiUri . 'oauth/access_token');
     }
 
+    public function getLastRequest()
+    {
+        $last = $this->httpClient->getLastRequest();
+
+        return $last;
+    }
     public function requestRequestToken()
     {
         $token = parent::requestRequestToken();
-        $headers = $this->httpClient->getLastRequest('headers');
-
         return $token;
     }
 
