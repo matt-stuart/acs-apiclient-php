@@ -1,6 +1,44 @@
 <?php
+/**
+ * The MIT License (MIT)
+ * Copyright (c) 2015 Answers Cloud Services
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ *
+ * @copyright Answers Cloud Services
+ * @author Matthew Stuart <matthew.stuart@answers.com>
+ */
 
-class ForeseeDate {
+/**
+ * ACS Date Support Library
+ * Defines function and other tasks related to the logic surrounding ACS API Date Objects
+ */
+class AcsDate {
+    /**
+     * Parses and creates an ACS date object for use with ACS API filtering
+     * See README for more information on possible options.
+     *
+     * @param string $client
+     * @param string|\DateTime $from
+     * @param string|\DateTime $to
+     * @param string $style
+     * @param bool|false $fiscal
+     * @param string $option
+     * @return array|bool
+     */
     public static function create($client, $from, $to, $style, $fiscal = false, $option = null)
     {
         if ($from && !($from instanceof \DateTime)) {
@@ -113,6 +151,11 @@ class ForeseeDate {
         return false;
     }
 
+    /**
+     * Helper function to convert a string to an instance of \DateTime
+     * @param string|]\DateTime $date
+     * @return DateTime
+     */
     public static function parseDateTime($date)
     {
         if ($date instanceof \DateTime) {

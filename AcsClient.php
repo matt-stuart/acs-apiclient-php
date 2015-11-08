@@ -1,9 +1,43 @@
 <?php
+/**
+ * The MIT License (MIT)
+ * Copyright (c) 2015 Answers Cloud Services
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ *
+ * @copyright Answers Cloud Services
+ * @author Matthew Stuart <matthew.stuart@answers.com>
+ */
 
+/**
+ * The ACS API Client Library
+ * Provides a library for interaction abstraction with the ACS API {@see http://bit.ly/15uYi0k}
+ */
 class AcsClient
 {
+    /**
+     * Signature Method - HMAC-SHA1
+     * @var string
+     */
     const SIGNATURE_METHOD_HMACSHA1 = "HMAC-SHA1";
 
+    /**
+     * Default construction passes the optional $config variable to the option parser
+     * @param array $config OPTIONAL array of options
+     */
     public function __construct(array $config = array())
     {        
         $this->setOptions($config);
@@ -50,10 +84,31 @@ class AcsClient
         throw new InvalidArgumentException("Method not defined '$name'");
     }
 
+    /**
+     * Primary entry point
+     * Function handles the interaction with the ACS API including necessary authentication steps should they be required.
+     * This function accepts multiple parameter patterns:
+     * <pre>
+     *      callResource(string $resource)
+     *      callResource(string $resource, function $callback)
+     *      callResource(string $resource, string $method)
+     *      callResource(string $resource, string $method, array $data)
+     *      callResource(string $resource, string $method, function $callback)
+     *      callResource(string $resource, array $data, function $callback)
+     *      callResource(string $resource, string $method, array $data, function $callback)
+     * </pre>
+     *
+     * @param string $resource URI for ACS API endpoint
+     * @param string $method HTTP Method to use for communication, Default: GET
+     * @param array $data Optional extra data to provide during the API request
+     * @param callable $callback Callback to be executed on completion o the request. Called on success and failure
+     * @throws InvalidArgumentException
+     * @return $this|bool When the request fails, FALSE is returned otherwise an instance of $this for chaining
+     */
     public function callResource($resource, $method = null, $data = null, $callback = null)
     {
         if (!is_string($resource) || !$resource) {
-            throw new \InvalidArgumentException("Unexpeted \$resource provided");
+            throw new \InvalidArgumentException("Unexpected \$resource provided");
         }
 
         $defaultMethod = "GET";
@@ -66,9 +121,16 @@ class AcsClient
             $callback = $data;
             $data = array();
         }
+        if (is_array($method)) {
+            $data = $method;
+            $method = $defaultMethod;
+        }
 
-        $method = strtoupper(trim($method)) ?: $defaultMethod;
-        if (!in_array($method, array("GET", "POST", "DELETE", "PUT"))) {
+        if (
+            !is_string($method) ||
+            !($method = strtoupper(trim($method)) ?: $defaultMethod) ||
+            !in_array($method, array("GET", "POST", "DELETE", "PUT"))
+        ) {
             throw new InvalidArgumentException("Invalid supplied method '{$method}'");
         }
 
@@ -90,8 +152,6 @@ class AcsClient
             $callback($this);
             return false;
         }
-
-        $uri = new \OAuth\Common\Http\Uri\Uri($this->getOption('serviceRoot') . $resource);
 
         $oa = $this->_getOAuth();
         $response = $oa->request(
@@ -136,6 +196,15 @@ class AcsClient
         return $this;
     }
 
+    /**
+     * Helper function to retrieve a properly formatted DATE reference object. This date object is formatted in a way
+     * that the ACS API can understand the request properly, it supports moment in time and time range options.
+     *
+     *
+     * @param string $clientId Customer client ID used for fiscal based dates
+     * @param mixed $date,... Date operators and operands see readme
+     * @return array|bool FALSE on error, array of date details when successful
+     */
     public function getDateObject($clientId, $date)
     {
         $arguments = func_get_args();
@@ -173,47 +242,83 @@ class AcsClient
             }
         }
 
-        if (!class_exists('ForeseeDate', false)) {
-            require_once __DIR__ . '/vendor/ForeseeDate.php';
+        if (!class_exists('AcsDate', false)) {
+            require_once __DIR__ . '/vendor/AcsDate.php';
         }
-        return \ForeseeDate::create($clientId, $from, $to, $style, $fiscal, $option);
+        return \AcsDate::create($clientId, $from, $to, $style, $fiscal, $option);
     }
 
+    /**
+     * Setter: Sets internal username for auth
+     * @param string $username
+     * @return $this
+     */
     public function setUsername($username)
     {
         $this->_username = $username;
         return $this;
     }
 
+    /**
+     * Setter: Sets internal password for auth
+     * @param $password
+     * @return $this
+     */
     public function setPassword($password)
     {
         $this->_password = $password;
         return $this;
     }
 
+    /**
+     * Setter: Sets internal consumer key parameter
+     * @param $key
+     * @return $this
+     */
     public function setConsumerKey($key)
     {
         $this->_consumerKey = $key;
         return $this;
     }
 
+    /**
+     * Setter: Sets internal consumer secret
+     * @param $secret
+     * @return $this
+     */
     public function setConsumerSecret($secret)
     {
         $this->_consumerSecret = $secret;
         return $this;
     }
 
+    /**
+     * Seter: Sets internal last response instance
+     * @param $response
+     * @return $this;
+     */
     public function setLastResponse($response)
     {
         $this->_lastResponse = $response;
+        return $this;
     }
 
+    /**
+     * Getter: Retrieves last response instance
+     * @return null
+     */
     public function getLastResponse()
     {
         return $this->_lastResponse;
     }
 
-
+    /**
+     * Setter: Sets internal error tracker
+     *
+     * @param string $code Short code, see readme
+     * @param string $message Long message description indicating error
+     * @return $this
+     */
     public function setError($code, $message = "")
     {
         if ($code) {
@@ -226,21 +331,38 @@ class AcsClient
         return $this;
     }
 
+    /**
+     * State: Indicates if current error state
+     * @return bool
+     */
     public function isError()
     {
         return !!$this->_error;
     }
 
+    /**
+     * Getter: Retrieves the current error instance
+     * @return bool
+     */
     public function getError()
     {
         return $this->_error;
     }
 
+    /**
+     * Getter: retrieves the currently set signature method or {@see SIGNATURE_METHOD_HMACSHA1} by default
+     * @return string
+     */
     public function getSignatureMethod()
     {
         return $this->_signatureMethod ?: static::SIGNATURE_METHOD_HMACSHA1;
     }
 
+    /**
+     * Getter: Retrieves option value for specified option key
+     * @param string $option Option key to retrieve
+     * @return mixed
+     */
     public function getOption($option)
     {
         if (isset($this->_options[$option])) {
@@ -250,6 +372,19 @@ class AcsClient
         return null;
     }
 
+    /**
+     * Setter: Sets internal access token instance. The access token is stored as an array internally consisting of the token
+     * and the associated secret.
+     * <pre>
+     *  accessToken = [
+     *      accessToken => value,
+     *      accessTokenSecret => value
+     *  ]
+     * </pre>
+     *
+     * @param string|array $token
+     * @return $this
+     */
     public function setAccessToken($token)
     {
         if (is_string($token)) {
@@ -266,24 +401,38 @@ class AcsClient
         return $this;
     }
 
-    public function setAccessTokenSecret($token)
+    /**
+     * Setter: Sets the internal access token secret value
+     * @param string $secret
+     * @return $this
+     */
+    public function setAccessTokenSecret($secret)
     {
-        if (!is_string($token)) {
+        if (!is_string($secret)) {
             throw new \InvalidArgumentException("Invalid access token secret provided. Expected string");
         }
 
         if (!is_array($this->_accessToken)) {
             $this->_accessToken = array();
         }
-        $this->_accessToken['accessTokenSecret'] = $token;
+        $this->_accessToken['accessTokenSecret'] = $secret;
         return $this;
     }
 
+    /**
+     * Getter: Retrieves the internal access token detail specifier {@see setAccessToken}
+     * @return array
+     */
     public function getAccessToken()
     {
         return $this->_accessToken;
     }
 
+    /**
+     * Force authentication process
+     *
+     * @return bool
+     */
     public function authenticate()
     {
         $this->_oa = null;
@@ -294,16 +443,65 @@ class AcsClient
     }
 
 
+    /**
+     * Consumer Key
+     * @var string
+     */
     protected $_consumerKey;
+
+    /**
+     * Consumer Key Secret
+     * @var string
+     */
     protected $_consumerSecret;
+
+    /**
+     * Access Token
+     * <pre>
+     *  [
+     *      accessToken => value,
+     *      accessTokenSecret => value
+     *  ]
+     * </pre>
+     *
+     * @var array
+     */
     protected $_accessToken;
+
+    /**
+     * Signature method to use
+     * @var string
+     */
     protected $_signatureMethod;
 
+    /**
+     * Username value to use for authentication
+     * @var string
+     */
     protected $_username;
+
+    /**
+     * Password value to use for authentication
+     * @var string
+     */
     protected $_password;
 
-
+    /**
+     * Last response from API interaction
+     * @var array
+     */
     protected $_lastResponse = null;
+
+    /**
+     * Error instance
+     * <pre>
+     *  [
+     *      'code' => value,
+     *      'description' => value
+     *  ]
+     * </pre>
+     * @var bool|array
+     */
     protected $_error = false;
 
     /**
@@ -320,13 +518,22 @@ class AcsClient
     );
 
     /**
-     *
+     * Internal OAuth instance
      * @var \OAuth\OAuth1\Service\Foresee
      */
     protected $_oa = null;
 
+    /**
+     * Internal OAuth cache data object
+     * @var array
+     */
     protected $_oaData = array();
-    
+
+    /**
+     * Retrieves the OAuth instance, creates new instance and preforms authentication process should it be not done
+     *
+     * @return \OAuth\OAuth1\Service\Foresee
+     */
     protected function _getOAuth()
     {
         if (!$this->_oa) {
@@ -376,6 +583,9 @@ class AcsClient
         return $this->_oa;
     }
 
+    /**
+     * Cleanup function to delete the cookiecar post OAuth process
+     */
     protected function _finishOAuth()
     {
         if ($this->_oa) {
@@ -385,6 +595,10 @@ class AcsClient
         }
     }
 
+    /**
+     * Processes the authorization request and establishes credentials with the ACS API OAUTH System
+     * @return bool
+     */
     protected function _establishAuthorization()
     {
         $oa = $this->_getOAuth();
@@ -491,37 +705,5 @@ class AcsClient
             $this->setError("COULDNOTLOGIN", "Error while authorizing. " . $e->getMessage());
             return false;
         }
-    }
-
-    protected function _generateResourceUri($resource, $params = array())
-    {
-        $url = $this->getOption('serviceRoot') . $resource;
-        if ($params) {
-            if (strpos($url, "?") === FALSE) {
-                $url .= "?";
-            }
-            $url .= http_build_query($params);
-        }
-        return $url;
-    }
-
-    protected function _extractCookies($headerString)
-    {
-        $headerString = str_replace("\r\n", "\n", $headerString);
-        $lines = explode("\n", $headerString);
-
-        $cookies = array();
-        foreach ($lines as $line) {
-            $pieces = explode(":", $line, 2);
-            if (count($pieces) == 2) {
-                if (strtolower($pieces[0]) == "set-cookie") {
-                    $pieces = explode(";", $pieces[1]);
-                    $cookie = trim($pieces[0]);
-                    $cookie = explode('=', $cookie);
-                    $cookies[strtolower($cookie[0])] = $cookie[1];
-                }
-            }
-        }
-        return $cookies;
     }
 }

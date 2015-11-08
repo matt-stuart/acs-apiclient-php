@@ -1,4 +1,26 @@
 <?php
+/**
+ * The MIT License (MIT)
+ * Copyright (c) 2015 Answers Cloud Services
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ *
+ * @copyright Answers Cloud Services
+ * @author Matthew Stuart <matthew.stuart@answers.com>
+ */
 
 namespace OAuth\OAuth1\Service;
 
@@ -11,8 +33,28 @@ use OAuth\Common\Http\Uri\UriInterface;
 use OAuth\Common\Storage\TokenStorageInterface;
 use OAuth\Common\Http\Client\ClientInterface;
 
+/**
+ * Defines custom ACS API logic within the OAuth service structure to handle som eof the incongruencies of the ACS API
+ *
+ * @package OAuth\OAuth1\Service
+ */
 class Foresee extends AbstractService
 {
+    /**
+     * Default API URI
+     * @var string
+     */
+    const DEFAULT_BASE_API_URI = 'https://portal2.foreseeresults.com/services/';
+
+    /**
+     * Standard constructor, adds default base API Uri if not provided
+     *
+     * @param CredentialsInterface $credentials
+     * @param ClientInterface $httpClient
+     * @param TokenStorageInterface $storage
+     * @param SignatureInterface $signature
+     * @param UriInterface|null $baseApiUri
+     */
     public function __construct(
         CredentialsInterface $credentials,
         ClientInterface $httpClient,
@@ -23,7 +65,7 @@ class Foresee extends AbstractService
         parent::__construct($credentials, $httpClient, $storage, $signature, $baseApiUri);
 
         if (null === $baseApiUri) {
-            $this->baseApiUri = new Uri('https://portal2.foreseeresults.com/services/');
+            $this->baseApiUri = new Uri(static::DEFAULT_BASE_API_URI);
         }
     }
 
@@ -63,18 +105,38 @@ class Foresee extends AbstractService
         return new Uri($this->baseApiUri . 'oauth/access_token');
     }
 
+    /**
+     * Retrieves an instance of the last response object from the HTTP Client library
+     *
+     * @return mixed
+     */
     public function getLastRequest()
     {
         $last = $this->httpClient->getLastRequest();
 
         return $last;
     }
+
+    /**
+     * Entry point to start the request for the REQUEST TOKEN
+     *
+     * @return \OAuth\Common\Token\TokenInterface|\OAuth\OAuth1\Token\TokenInterface
+     */
     public function requestRequestToken()
     {
         $token = parent::requestRequestToken();
         return $token;
     }
 
+    /**
+     * Entry point ot start the request for the ACCESS TOKEN
+     *
+     * @param string $token
+     * @param string $verifier
+     * @param null $tokenSecret
+     * @return StdOAuth1Token|\OAuth\OAuth1\Token\TokenInterface|string
+     * @throws TokenResponseException
+     */
     public function requestAccessToken($token, $verifier, $tokenSecret = null)
     {
         if (is_null($tokenSecret)) {
@@ -101,6 +163,11 @@ class Foresee extends AbstractService
         return $token;
     }
 
+    /**
+     * Sets internal access token
+     * @param $token
+     * @return $this
+     */
     public function setAccessToken($token)
     {
         $this->storage->storeAccessToken($this->service(), $token);
@@ -108,6 +175,11 @@ class Foresee extends AbstractService
         return $this;
     }
 
+    /**
+     * Creates an access token instance after parsing the supplied data
+     * @param $data
+     * @return StdOAuth1Token
+     */
     public function createAccessToken($data)
     {
         $token = new StdOAuth1Token();
@@ -124,6 +196,10 @@ class Foresee extends AbstractService
         return $token;
     }
 
+    /**
+     * Retrieves the internal access token
+     * @return \OAuth\Common\Token\TokenInterface
+     */
     public function getAccessToken()
     {
         return $this->storage->retrieveAccessToken($this->service());
