@@ -3,6 +3,12 @@ All notable changes to this project will be documented in this file.
 
 ## [0.0.1] - 2015-11-09
 ### Updated
+- Completed unit tests for AcsClient
+### Added
+- Unit tests for AcsDate
+
+## [0.0.1] - 2015-11-09
+### Updated
 - Reorganized source code to account for unit tests
 ### Added
 - Unit tests for AcsClient library
