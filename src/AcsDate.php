@@ -107,7 +107,7 @@ class AcsDate {
                     $block["r"] = "M";
                     break;
 
-                case 'LAStMONTH':
+                case 'LASTMONTH':
                     $block["r"] = "M";
                     $block["n"] = 1;
                     break;
