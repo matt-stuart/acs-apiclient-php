@@ -77,7 +77,7 @@ class AcsClient
             if (property_exists($this, $attribute)) {
                 return $this->{$attribute};
             }
-            if (isset($this->_options[$property])) {
+            if (array_key_exists($property, $this->_options)) {
                 return $this->_options[$property];
             }
         }
@@ -105,7 +105,7 @@ class AcsClient
      * @throws InvalidArgumentException
      * @return $this|bool When the request fails, FALSE is returned otherwise an instance of $this for chaining
      */
-    public function callResource($resource, $method = null, $data = null, $callback = null)
+    public function callResource($resource, $method = "", $data = null, $callback = null)
     {
         if (!is_string($resource) || !$resource) {
             throw new \InvalidArgumentException("Unexpected \$resource provided");
@@ -131,13 +131,14 @@ class AcsClient
             !($method = strtoupper(trim($method)) ?: $defaultMethod) ||
             !in_array($method, array("GET", "POST", "DELETE", "PUT"))
         ) {
-            throw new InvalidArgumentException("Invalid supplied method '{$method}'");
+            throw new InvalidArgumentException("Invalid supplied method");
         }
 
         $data = $data ?: array();
         if (!is_array($data)) {
             throw new InvalidArgumentException("Expected array for extra data");
         }
+
         if (!$callback || !is_callable($callback)) {
             $callback = function() { /* no op */ };
         }
@@ -162,13 +163,13 @@ class AcsClient
         );
 
         $info = $oa->getLastRequest();
-        if (!(isset($info['info']) && isset($info['info']['http_code']) && $info['info']['http_code'] == 200)) {
+        if (!(is_array($info) && isset($info['info']) && isset($info['info']['http_code']) && $info['info']['http_code'] == 200)) {
             // Error State
+            $info = (array)$info;
             $http_code = 0;
             if (isset($info['info']) && isset($info['info']['http_code'])) {
                 $http_code = $info['info']['http_code'];
             }
-
             switch ($http_code) {
                 case 404:
                     $this->setError("404", "Unknown resource '$resource'");
@@ -243,7 +244,7 @@ class AcsClient
         }
 
         if (!class_exists('AcsDate', false)) {
-            require_once __DIR__ . '/vendor/AcsDate.php';
+            require_once __DIR__ . '/AcsDate.php';
         }
         return \AcsDate::create($clientId, $from, $to, $style, $fiscal, $option);
     }
