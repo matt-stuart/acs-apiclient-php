@@ -724,9 +724,6 @@ class AcsClientTest extends \PHPUnit_Framework_TestCase
         ));
     }
 
-    /**
-     * @group test
-     */
     public function testAccessors()
     {
         $instance = $this->getMockBuilder('\AcsClient')
@@ -758,6 +755,48 @@ class AcsClientTest extends \PHPUnit_Framework_TestCase
         $instance->setOptions(array('testOption' => 'Option Value'));
         $this->assertEquals('Option Value', $instance->getOption('testOption'));
         $this->assertEquals(null, $instance->getOption('notset'));
+
+        try {
+            $instance->setAccessToken(1235);
+            $this->fail("Expected exception");
+        } catch (\Exception $e) {
+            $this->assertInstanceOf('InvalidArgumentException', $e);
+            $this->assertEquals("Invalid access token provided. Expect string or array", $e->getMessage());
+        }
+
+        try {
+            $instance->setAccessTokenSecret(1235);
+            $this->fail("Expected exception");
+        } catch (\Exception $e) {
+            $this->assertInstanceOf('InvalidArgumentException', $e);
+            $this->assertEquals("Invalid access token secret provided. Expected string", $e->getMessage());
+        }
+
+        $this->assertSame(
+            $instance,
+            $instance->setAccessToken('token')
+        );
+        $this->assertSame(
+            $instance,
+            $instance->setAccessTokenSecret('secret')
+        );
+        $token = array(
+            'accessToken' => 'token',
+            'accessTokenSecret' => 'secret'
+        );
+        $this->assertEquals(
+            $token,
+            $instance->getAccessToken()
+        );
+
+        $this->assertSame($instance, $instance->setAccessToken(false));
+        $this->assertSame($instance, $instance->setAccessToken($token));
+        $this->assertEquals($token, $instance->getAccessToken());
+
+        $this->assertSame($instance, $instance->setAccessToken(false));
+        $this->assertSame($instance, $instance->setAccessTokenSecret('secret'));
+        $this->assertSame($instance, $instance->setAccessToken('token'));
+        $this->assertEquals($token, $instance->getAccessToken());
     }
 
     public function testAuthenticate()
@@ -772,21 +811,11 @@ class AcsClientTest extends \PHPUnit_Framework_TestCase
         $this->assertEquals('return', $instance->authenticate());
     }
 
-    public function testEstablishAuthorization_AccessToken()
+    public function testEstablishAuthorization_BadRequestToken()
     {
-        $instance = $this->getMockBuilder('\AcsClient')
-            ->setMethods(array('_getOAuth'))
-            ->getMock();
-
-        $instance->expects($this->once())
-            ->method('_getOAuth')
-            ->will($this->returnValue(true));
-
-
-    }
-
-    public function testEstablishAuthorization()
-    {
+        /**
+         * @var \AcsClient $instance
+         */
         $instance = $this->getMockBuilder('\AcsClient')
             ->setMethods(array('_getOAuth'))
             ->getMock();
@@ -795,21 +824,508 @@ class AcsClientTest extends \PHPUnit_Framework_TestCase
         $oaMock = $this->getMockBuilder('\OAuth\OAuth1\Service\Foresee')
             ->disableOriginalConstructor()
             ->setMethods(array(
-                'request', 'getLastRequest'
+                'requestRequestToken'
             ))
             ->getMock();
 
         $oaMock->expects($this->once())
-            ->method('request')
-            ->will($this->returnValue(true));
-
-        $oaMock->expects($this->once())
-            ->method('getLastRequest')
-            ->will($this->returnValue(null));
+            ->method('requestRequestToken')
+            ->will($this->returnValue(false));
 
         $instance->expects($this->once())
             ->method('_getOAuth')
             ->will($this->returnValue($oaMock));
 
+        $this->assertFalse(
+            $instance->authenticate(),
+            "Expected a false to be returned"
+        );
+        $this->assertTrue($instance->isError());
+        $this->assertTrue(is_array($error = $instance->getError()));
+        $this->assertEquals("INVALIDREQUESTTOKEN", $error['code']);
+        $this->assertEquals("Unable to retrieve request token from service.", $error['message']);
+    }
+
+    public function testEstablishAuthorization_CouldNotLogin()
+    {
+        /**
+         * @var \AcsClient $instance
+         */
+        $instance = $this->getMockBuilder('\AcsClient')
+            ->setMethods(array('_getOAuth'))
+            ->getMock();
+
+
+        $oaMock = $this->getMockBuilder('\OAuth\OAuth1\Service\Foresee')
+            ->disableOriginalConstructor()
+            ->setMethods(array(
+                'requestRequestToken', 'getHttpClient', 'getLoginEndpoint'
+            ))
+            ->getMock();
+
+        $oaMock->expects($this->once())
+            ->method('requestRequestToken')
+            ->will($this->returnValue(true));
+
+        $reqMock = $this->getMockBuilder('\OAuth\Common\Http\Client\CurlClient')
+            ->setMethods(array('retrieveResponse', 'getLastRequest'))
+            ->getMock();
+        $reqMock->expects($this->once())
+            ->method('getLastRequest')
+            ->with('info')
+            ->will($this->returnValue(array('http_code' => 301)));
+
+        $oaMock->expects($this->once())
+            ->method('getHttpClient')
+            ->will($this->returnValue($reqMock));
+
+        $instance->expects($this->once())
+            ->method('_getOAuth')
+            ->will($this->returnValue($oaMock));
+
+        $this->assertFalse(
+            $instance->authenticate(),
+            "Expected a false to be returned"
+        );
+        $this->assertTrue($instance->isError());
+        $this->assertTrue(is_array($error = $instance->getError()));
+        $this->assertEquals("COULDNOTLOGIN", $error['code']);
+        $this->assertEquals("Unexpected response from the OAuth service, unable to authorize.", $error['message']);
+    }
+
+    public function testEstablishAuthorization_InvalidCreds()
+    {
+        /**
+         * @var \AcsClient $instance
+         */
+        $instance = $this->getMockBuilder('\AcsClient')
+            ->setMethods(array('_getOAuth'))
+            ->getMock();
+
+
+        $oaMock = $this->getMockBuilder('\OAuth\OAuth1\Service\Foresee')
+            ->disableOriginalConstructor()
+            ->setMethods(array(
+                'requestRequestToken', 'getHttpClient', 'getLoginEndpoint'
+            ))
+            ->getMock();
+
+        $oaMock->expects($this->once())
+            ->method('requestRequestToken')
+            ->will($this->returnValue(true));
+
+        $reqMock = $this->getMockBuilder('\OAuth\Common\Http\Client\CurlClient')
+            ->setMethods(array('retrieveResponse', 'getLastRequest'))
+            ->getMock();
+        $reqMock->expects($this->once())
+            ->method('getLastRequest')
+            ->with('info')
+            ->will($this->returnValue(array(
+                'http_code' => 302,
+                'redirect_url' => 'page#loginfailed'
+            )));
+
+        $oaMock->expects($this->once())
+            ->method('getHttpClient')
+            ->will($this->returnValue($reqMock));
+
+        $instance->expects($this->once())
+            ->method('_getOAuth')
+            ->will($this->returnValue($oaMock));
+
+        $this->assertFalse(
+            $instance->authenticate(),
+            "Expected a false to be returned"
+        );
+        $this->assertTrue($instance->isError());
+        $this->assertTrue(is_array($error = $instance->getError()));
+        $this->assertEquals("INVALIDCREDENTIALS", $error['code']);
+        $this->assertEquals("Unable to login, username and password are invalid.", $error['message']);
+    }
+
+    public function testEstablishAuthorization_NoAccessToken_One()
+    {
+        /**
+         * @var \AcsClient $instance
+         */
+        $instance = $this->getMockBuilder('\AcsClient')->setMethods(array('_getOAuth'))->getMock();
+
+        $oaMock = $this->getMockBuilder('\OAuth\OAuth1\Service\Foresee')
+            ->disableOriginalConstructor()
+            ->setMethods(array('requestRequestToken', 'getHttpClient', 'getLoginEndpoint', 'getAuthorizationEndpoint'))
+            ->getMock();
+
+        $rtMock = $this->getMockBuilder('RequestToken')->setMethods(array('getRequestToken'))->getMock();
+
+
+        $reqMock = $this->getMockBuilder('\OAuth\Common\Http\Client\CurlClient')
+            ->setMethods(array('retrieveResponse', 'getLastRequest'))
+            ->getMock();
+
+        $reqMock->expects($this->exactly(2))->method('getLastRequest')->will($this->onConsecutiveCalls(
+            array('http_code' => 302, 'redirect_url' => 'page#success')),
+            array('info' => array('http_code' => 301))
+        );
+
+        $oaMock->expects($this->once())->method('requestRequestToken')->will($this->returnValue($rtMock));
+        $oaMock->expects($this->once())->method('getHttpClient')->will($this->returnValue($reqMock));
+
+        $instance->expects($this->once())->method('_getOAuth')->will($this->returnValue($oaMock));
+
+        $this->assertFalse(
+            $instance->authenticate(),
+            "Expected a false to be returned"
+        );
+        $this->assertTrue($instance->isError());
+        $this->assertTrue(is_array($error = $instance->getError()));
+        $this->assertEquals("COULDNOTGETACCESSTOKEN", $error['code']);
+        $this->assertEquals("Unexpected response from the OAuth service, unable to authorize.", $error['message']);
+    }
+
+    public function testEstablishAuthorization_NoAccessToken_Two()
+    {
+        /**
+         * @var \AcsClient $instance
+         */
+        $instance = $this->getMockBuilder('\AcsClient')->setMethods(array('_getOAuth'))->getMock();
+
+        $oaMock = $this->getMockBuilder('\OAuth\OAuth1\Service\Foresee')
+            ->disableOriginalConstructor()
+            ->setMethods(array('requestRequestToken', 'getHttpClient', 'getLoginEndpoint', 'getAuthorizationEndpoint'))
+            ->getMock();
+
+        $rtMock = $this->getMockBuilder('RequestToken')->setMethods(array('getRequestToken'))->getMock();
+
+
+        $reqMock = $this->getMockBuilder('\OAuth\Common\Http\Client\CurlClient')
+            ->setMethods(array('retrieveResponse', 'getLastRequest'))
+            ->getMock();
+
+        $reqMock->expects($this->exactly(2))->method('getLastRequest')->will($this->onConsecutiveCalls(
+            array('http_code' => 302, 'redirect_url' => 'page#success'),
+            array('info' => array('http_code' => '302', 'redirect_url' => 'no_question_mark'))
+        ));
+
+        $oaMock->expects($this->once())->method('requestRequestToken')->will($this->returnValue($rtMock));
+        $oaMock->expects($this->once())->method('getHttpClient')->will($this->returnValue($reqMock));
+
+        $instance->expects($this->once())->method('_getOAuth')->will($this->returnValue($oaMock));
+
+        $this->assertFalse(
+            $instance->authenticate(),
+            "Expected a false to be returned"
+        );
+        $this->assertTrue($instance->isError());
+        $this->assertTrue(is_array($error = $instance->getError()));
+        $this->assertEquals("COULDNOTGETACCESSTOKEN", $error['code']);
+        $this->assertEquals("Unexpected response from the OAuth service, unable to authorize.", $error['message']);
+    }
+
+    public function testEstablishAuthorization_NoVerifier()
+    {
+        /**
+         * @var \AcsClient $instance
+         */
+        $instance = $this->getMockBuilder('\AcsClient')->setMethods(array('_getOAuth'))->getMock();
+
+        $oaMock = $this->getMockBuilder('\OAuth\OAuth1\Service\Foresee')
+            ->disableOriginalConstructor()
+            ->setMethods(array('requestRequestToken', 'getHttpClient', 'getLoginEndpoint', 'getAuthorizationEndpoint'))
+            ->getMock();
+
+        $rtMock = $this->getMockBuilder('RequestToken')->setMethods(array('getRequestToken'))->getMock();
+
+
+        $reqMock = $this->getMockBuilder('\OAuth\Common\Http\Client\CurlClient')
+            ->setMethods(array('retrieveResponse', 'getLastRequest'))
+            ->getMock();
+
+        $reqMock->expects($this->exactly(2))->method('getLastRequest')->will($this->onConsecutiveCalls(
+            array('http_code' => '302', 'redirect_url' => 'page#success'),
+            array('info' => array('http_code' => '302', 'redirect_url' => 'url?invalid=variable'))
+        ));
+
+        $oaMock->expects($this->once())->method('requestRequestToken')->will($this->returnValue($rtMock));
+        $oaMock->expects($this->once())->method('getHttpClient')->will($this->returnValue($reqMock));
+
+        $instance->expects($this->once())->method('_getOAuth')->will($this->returnValue($oaMock));
+
+        $this->assertFalse(
+            $instance->authenticate(),
+            "Expected a false to be returned"
+        );
+        $this->assertTrue($instance->isError());
+        $this->assertTrue(is_array($error = $instance->getError()));
+        $this->assertEquals("COULDNOTFINDVERIFIER", $error['code']);
+        $this->assertEquals("Unexpected response from OAuth service, unable to complete authorization.", $error['message']);
+    }
+
+    public function testEstablishAuthorization_BadVerufier()
+    {
+        /**
+         * @var \AcsClient $instance
+         */
+        $instance = $this->getMockBuilder('\AcsClient')->setMethods(array('_getOAuth'))->getMock();
+
+        $oaMock = $this->getMockBuilder('\OAuth\OAuth1\Service\Foresee')
+            ->disableOriginalConstructor()
+            ->setMethods(array('requestRequestToken', 'getHttpClient', 'getLoginEndpoint', 'getAuthorizationEndpoint'))
+            ->getMock();
+
+        $rtMock = $this->getMockBuilder('RequestToken')->setMethods(array('getRequestToken'))->getMock();
+
+
+        $reqMock = $this->getMockBuilder('\OAuth\Common\Http\Client\CurlClient')
+            ->setMethods(array('retrieveResponse', 'getLastRequest'))
+            ->getMock();
+
+        $reqMock->expects($this->exactly(2))->method('getLastRequest')->will($this->onConsecutiveCalls(
+            array('http_code' => '302', 'redirect_url' => 'page#success'),
+            array('info' => array('http_code' => '302', 'redirect_url' => 'url?oauth_verifier=A'))
+        ));
+
+        $oaMock->expects($this->once())->method('requestRequestToken')->will($this->returnValue($rtMock));
+        $oaMock->expects($this->once())->method('getHttpClient')->will($this->returnValue($reqMock));
+
+        $instance->expects($this->once())->method('_getOAuth')->will($this->returnValue($oaMock));
+
+        $this->assertFalse(
+            $instance->authenticate(),
+            "Expected a false to be returned"
+        );
+        $this->assertTrue($instance->isError());
+        $this->assertTrue(is_array($error = $instance->getError()));
+        $this->assertEquals("COULDNOTFINDVERIFIER", $error['code']);
+        $this->assertEquals("Unexpected response from OAuth service, unable to complete authorization.", $error['message']);
+    }
+
+    public function testEstablishAuthorization_couldNotGetAccessToken()
+    {
+        /**
+         * @var \AcsClient $instance
+         */
+        $instance = $this->getMockBuilder('\AcsClient')->setMethods(array('_getOAuth'))->getMock();
+
+        $oaMock = $this->getMockBuilder('\OAuth\OAuth1\Service\Foresee')
+            ->disableOriginalConstructor()
+            ->setMethods(array('requestRequestToken', 'getHttpClient', 'getLoginEndpoint', 'getAuthorizationEndpoint', 'setHttpClient', 'requestAccessToken'))
+            ->getMock();
+
+        $rtMock = $this->getMockBuilder('RequestToken')->setMethods(array('getRequestToken', 'getRequestTokenSecret'))->getMock();
+
+
+        $reqMock = $this->getMockBuilder('\OAuth\Common\Http\Client\CurlClient')
+            ->setMethods(array('retrieveResponse', 'getLastRequest'))
+            ->getMock();
+
+        $reqMock->expects($this->exactly(2))->method('getLastRequest')->will($this->onConsecutiveCalls(
+            array('http_code' => '302', 'redirect_url' => 'page#success'),
+            array('info' => array('http_code' => '302', 'redirect_url' => 'url?oauth_verifier=VALID'))
+        ));
+
+        $oaMock->expects($this->once())->method('requestRequestToken')->will($this->returnValue($rtMock));
+        $oaMock->expects($this->once())->method('getHttpClient')->will($this->returnValue($reqMock));
+
+        $instance->expects($this->once())->method('_getOAuth')->will($this->returnValue($oaMock));
+
+        $this->assertFalse(
+            $instance->authenticate(),
+            "Expected a false to be returned"
+        );
+        $this->assertTrue($instance->isError());
+        $this->assertTrue(is_array($error = $instance->getError()));
+        $this->assertEquals("COULDNOTGETACCESSTOKENNULL", $error['code']);
+        $this->assertEquals("Unable to retrieve access token, please try again.", $error['message']);
+    }
+
+    public function testEstablishAuthorization()
+    {
+        /**
+         * @var \AcsClient $instance
+         */
+        $instance = $this->getMockBuilder('\AcsClient')->setMethods(array('_getOAuth'))->getMock();
+
+        $oaMock = $this->getMockBuilder('\OAuth\OAuth1\Service\Foresee')
+            ->disableOriginalConstructor()
+            ->setMethods(array('requestRequestToken', 'getHttpClient', 'getLoginEndpoint', 'getAuthorizationEndpoint', 'setHttpClient', 'requestAccessToken'))
+            ->getMock();
+
+        $rtMock = $this->getMockBuilder('RequestToken')->setMethods(array('getRequestToken', 'getRequestTokenSecret'))->getMock();
+
+
+        $reqMock = $this->getMockBuilder('\OAuth\Common\Http\Client\CurlClient')
+            ->setMethods(array('retrieveResponse', 'getLastRequest'))
+            ->getMock();
+
+        $reqMock->expects($this->exactly(2))->method('getLastRequest')->will($this->onConsecutiveCalls(
+            array('http_code' => '302', 'redirect_url' => 'page#success'),
+            array('info' => array('http_code' => '302', 'redirect_url' => 'url?oauth_verifier=VALID'))
+        ));
+
+        $atMock = $this->getMockBuilder('AccessToken')->setMethods(array('getAccessToken', 'getAccessTokenSecret'))->getMock();
+        $atMock->expects($this->once())->method('getAccessToken')->will($this->returnValue('accessToken'));
+        $atMock->expects($this->once())->method('getAccessTokenSecret')->will($this->returnValue('accessTokenSecret'));
+
+        $oaMock->expects($this->once())->method('requestRequestToken')->will($this->returnValue($rtMock));
+        $oaMock->expects($this->once())->method('getHttpClient')->will($this->returnValue($reqMock));
+
+        $oaMock->expects($this->once())->method('requestAccessToken')->will($this->returnValue($atMock));
+        $instance->expects($this->exactly(2))->method('_getOAuth')->will($this->returnValue($oaMock));
+
+        $this->assertSame(
+            $instance,
+            $instance->authenticate()
+        );
+        $this->assertFalse($instance->isError());
+
+        $this->assertSame(
+            $instance,
+            $this->invokeMethod($instance, '_establishAuthorization', array())
+        );
+    }
+
+    public function testEstablishAuthorization_Exception()
+    {
+        /**
+         * @var \AcsClient $instance
+         */
+        $instance = $this->getMockBuilder('\AcsClient')
+            ->setMethods(array('_getOAuth'))
+            ->getMock();
+
+
+        $oaMock = $this->getMockBuilder('\OAuth\OAuth1\Service\Foresee')
+            ->disableOriginalConstructor()
+            ->setMethods(array(
+                'requestRequestToken'
+            ))
+            ->getMock();
+
+        $oaMock->expects($this->once())
+            ->method('requestRequestToken')
+            ->will($this->throwException(new \Exception('Testing Message')));
+
+        $instance->expects($this->once())
+            ->method('_getOAuth')
+            ->will($this->returnValue($oaMock));
+
+        $this->assertFalse(
+            $instance->authenticate(),
+            "Expected a false to be returned"
+        );
+        $this->assertTrue($instance->isError());
+        $this->assertTrue(is_array($error = $instance->getError()));
+        $this->assertEquals("COULDNOTLOGIN", $error['code']);
+        $this->assertEquals("Error while authorizing. Testing Message", $error['message']);
+    }
+
+    /**
+     * @expectedException \InvalidArgumentException
+     * @expectedExceptionMessage Invalid arguments, date creation requires at least one date parameter
+     * @group getDateObject
+     */
+    public function testGetDateObject_Exception()
+    {
+        $instance = $this->getMockBuilder('\AcsClient')->setMethods(null)->getMock();
+        $instance->getDateObject('clientid', null);
+    }
+
+    /**
+     * @group getDateObject
+     */
+    public function testGetDateObject()
+    {
+        $instance = $this->getMockBuilder('\AcsClient')->setMethods(null)->getMock();
+
+        $this->assertTrue(is_array(
+            $instance->getDateObject(
+                'clientid',
+                '2015-01-01'
+            )
+        ));
+
+        $this->assertTrue(is_array(
+            $instance->getDateObject(
+                'clientid',
+                '2015-01-01',
+                '2015-10-01'
+            )
+        ));
+
+        $this->assertTrue(is_array(
+            $instance->getDateObject(
+                'clientid',
+                '2015-01-01',
+                '2015-10-01',
+                'style'
+            )
+        ));
+
+        $this->assertTrue(is_array(
+            $instance->getDateObject(
+                'clientid',
+                '2015-01-01',
+                '2015-10-01',
+                'style',
+                'option'
+            )
+        ));
+
+        $this->assertTrue(is_array(
+            $instance->getDateObject(
+                'clientid',
+                '2015-01-01',
+                '2015-10-01',
+                'style',
+                'option',
+                'fiscal'
+            )
+        ));
+
+        $this->assertTrue(is_array(
+            $instance->getDateObject(
+                'clientid',
+                '2015-01-01',
+                '2015-10-01',
+                'style',
+                'option',
+                'fiscal',
+                'extra'
+            )
+        ));
+
+        $this->assertTrue(is_array(
+            $instance->getDateObject(
+                'clientid',
+                '2015-01-01',
+                new \DateTime()
+            )
+        ));
+
+        $this->assertTrue(is_array(
+            $instance->getDateObject(
+                'clientid',
+                new \DateTIme('2015-01-01'),
+                new \DateTime('2015-10-01')
+            )
+        ));
+    }
+
+    /**
+     * Call protected/private method of a class.
+     *
+     * @param object &$object Instantiated object that we will run method on.
+     * @param string $methodName Method name to call
+     * @param array $parameters Array of parameters to pass into method.
+     *
+     * @return mixed Method return.
+     */
+    public function invokeMethod(&$object, $methodName, array $parameters = array())
+    {
+        $reflection = new \ReflectionClass(get_class($object));
+        $method = $reflection->getMethod($methodName);
+        $method->setAccessible(true);
+
+        return $method->invokeArgs($object, $parameters);
     }
 }

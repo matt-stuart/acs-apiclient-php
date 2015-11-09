@@ -388,10 +388,15 @@ class AcsClient
      */
     public function setAccessToken($token)
     {
+        if (!$token) {
+            $this->_accessToken = null;
+            return $this;
+        }
+
         if (is_string($token)) {
             $token = array('accessToken' => $token);
             if (is_array($this->_accessToken)) {
-                $token = array_merge($this->_accessToken,array('accessToken' => $token));
+                $token = array_merge($this->_accessToken, $token);
             }
         }
         if (!is_array($token)) {
@@ -534,6 +539,7 @@ class AcsClient
      * Retrieves the OAuth instance, creates new instance and preforms authentication process should it be not done
      *
      * @return \OAuth\OAuth1\Service\Foresee
+     * @codeCoverageIgnore
      */
     protected function _getOAuth()
     {
@@ -585,18 +591,6 @@ class AcsClient
     }
 
     /**
-     * Cleanup function to delete the cookiecar post OAuth process
-     */
-    protected function _finishOAuth()
-    {
-        if ($this->_oa) {
-            if ($cj = $this->getOption('cookieJar')) {
-                @unlink($cj);
-            }
-        }
-    }
-
-    /**
      * Processes the authorization request and establishes credentials with the ACS API OAUTH System
      * @return bool
      */
@@ -605,7 +599,7 @@ class AcsClient
         $oa = $this->_getOAuth();
 
         if (isset($this->_oaData['accessToken'])) {
-            return true;
+            return $this;
         }
 
         try {
@@ -654,7 +648,7 @@ class AcsClient
              * CHECK AUTHORIZATION / GET VERIFIER
              */
             $response = $request->retrieveResponse(
-                $this->_oa->getAuthorizationEndpoint(array(
+                $oa->getAuthorizationEndpoint(array(
                     'oauth_token' => $requestToken->getRequestToken()
                 )),
                 null,
@@ -692,7 +686,6 @@ class AcsClient
                 $this->_oaData['oauth_verifier'],
                 $requestToken->getRequestTokenSecret()
             );
-
             if (!$accessToken) {
                 $this->setError("COULDNOTGETACCESSTOKENNULL", "Unable to retrieve access token, please try again.");
                 return false;
@@ -700,7 +693,7 @@ class AcsClient
             }
             $this->setAccessToken($accessToken->getAccessToken())->setAccessTokenSecret($accessToken->getAccessTokenSecret());
             $this->_oaData['accessToken'] = $accessToken;
-            return true;
+            return $this;
         } catch (Exception $e) {
             // Add error
             $this->setError("COULDNOTLOGIN", "Error while authorizing. " . $e->getMessage());
